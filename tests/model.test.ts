@@ -169,6 +169,87 @@ describe('the model of the Bistro Booking example', () => {
   });
 });
 
+describe('buildDossierModel: the facts of the manifests (compliance-core#2)', () => {
+  it('gives each service its identity, components with their effective controller, and notices', () => {
+    const web = model().services.find((s) => s.repo === 'bistro-web')!;
+    expect(web.fullName).toBe('bistro-org/bistro-web');
+    expect(web.description).toMatch(/^Booking website of Bistro Booking/);
+    expect(web.controller).toBe('organisation');
+    // A component with no controller of its own takes the service's.
+    expect(web.components).toEqual([
+      { id: 'site', kind: 'frontend', controller: null, effectiveController: 'organisation' },
+      { id: 'offline-app', kind: 'progressive-web-app', controller: 'user-of-the-app', effectiveController: 'user-of-the-app' },
+    ]);
+    expect(web.notices).toEqual([
+      { id: 'privacy-page', component: 'site', kind: 'page', ref: 'https://bistro-booking.example/privacy', source: 'code: bistro-web@9d3f6b1:src/pages/privacy.tsx' },
+    ]);
+  });
+
+  it('gives each service its personal data and storage, in the order of the manifest', () => {
+    const web = model().services.find((s) => s.repo === 'bistro-web')!;
+    expect(web.personalData.map((d) => d.id)).toEqual(['booking-form', 'visit-statistics', 'guest-notes']);
+    expect(web.personalData[0]).toEqual({
+      id: 'booking-form',
+      component: 'site',
+      subjects: ['restaurant guests'],
+      purpose: 'collect the data of a table booking and send it to the booking API',
+      legalBasis: 'contract',
+      fields: [
+        { name: 'guest name', category: 'identity' },
+        { name: 'guest email', category: 'contact' },
+        { name: 'guest phone number', category: 'contact' },
+        { name: 'dietary notes (free text)', category: 'special' },
+      ],
+      source: 'code: bistro-web@9d3f6b1:src/components/BookingForm.tsx',
+    });
+    expect(web.storage.map((s) => s.id)).toEqual(['booking-draft', 'consent-cookie', 'device-notes']);
+    expect(web.storage[1]).toEqual({
+      id: 'consent-cookie',
+      component: 'site',
+      kind: 'browser',
+      location: "first-party cookie in the visitor's browser",
+      data: ['visit-statistics'],
+      retention: { duration: 'P6M', trigger: 'expiry of the cookie' },
+      source: 'code: bistro-web@9d3f6b1:src/analytics/consent.ts',
+    });
+  });
+
+  it('lists the declared tools with the facts of their manifest, a v0.1 one included', () => {
+    const [crm, ...rest] = model().tools;
+    expect(rest).toEqual([]);
+    expect(crm).toMatchObject({ id: 'crm', name: 'ClientDesk CRM', path: 'declared/crm/manifest.yaml', fullName: null, controller: 'shared', components: [], notices: [] });
+    expect(crm.personalData.map((d) => [d.id, d.component, d.legalBasis, d.source])).toEqual([
+      ['newsletter-contacts', null, 'consent', 'declared: declared/crm/manifest.yaml (marketing team)'],
+    ]);
+    // A retention with no trigger keeps the duration.
+    expect(crm.storage.map((s) => [s.id, s.retention])).toEqual([
+      ['crm-database', { duration: 'P2Y', trigger: 'after the last interaction with the contact' }],
+      ['campaign-exports', { duration: 'unknown', trigger: null }],
+    ]);
+  });
+
+  it('gives each processing the repos and tools that feed it, with their scope', () => {
+    const byId = Object.fromEntries(model().processings.map((p) => [p.id, p.services]));
+    expect(byId['marketing-emails']).toEqual([
+      { repo: null, tool: 'crm', data: ['newsletter-contacts'], recipients: null },
+      { repo: 'bistro-api', tool: null, data: ['guest-contact'], recipients: [] },
+    ]);
+    expect(byId['table-bookings'][1]).toEqual({
+      repo: 'bistro-api',
+      tool: null,
+      data: ['booking-details', 'guest-contact', 'no-show-history', 'payment-reference', 'request-metadata'],
+      recipients: ['calendar-link', 'charge-deposit', 'mailrelay', 'paygate', 'send-email', 'send-sms', 'textflow-sms'],
+    });
+
+    // With no data filter, every personal_data id of the manifest is in scope.
+    const files = filesOf(EXAMPLE_V02);
+    const path = 'processings/marketing-emails/processing.yaml';
+    files[path] = files[path].replace('    data: [guest-contact]\n', '');
+    const unfiltered = buildDossierModel(treeFromFiles(files)).processings.find((p) => p.id === 'marketing-emails')!.services[1];
+    expect(unfiltered.data).toEqual(['booking-details', 'guest-contact', 'no-show-history', 'payment-reference', 'request-metadata', 'staff-accounts']);
+  });
+});
+
 /** The cells of the rows of the table under `## <heading>` of the English golden. */
 function goldenRows(heading: string): string[][] {
   const section = golden.en.split(`## ${heading}\n`)[1].split(/^## /m)[0];

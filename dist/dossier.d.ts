@@ -307,6 +307,80 @@ export interface ProcessingModel {
     recipients: RecipientModel[];
     /** The raw `review` of processing.yaml (v0.2.1), or null. */
     review: Doc | null;
+    /** The repos and declared tools that feed the processing, in the order of processing.yaml. */
+    services: ProcessingServiceModel[];
+}
+/** One entry of `services` of processing.yaml. */
+export interface ProcessingServiceModel {
+    /** The repo name, or null for a declared tool. */
+    repo: string | null;
+    /** The declared tool id, or null for a repo. */
+    tool: string | null;
+    /** The personal_data ids in scope: the `data` filter, or every id of the manifest when there is none. Sorted. */
+    data: string[];
+    /** The `recipients` filter, sorted, or null when the entry has none. */
+    recipients: string[] | null;
+}
+export interface ComponentModel {
+    id: string;
+    kind: string;
+    /** The controller the manifest states for the component (v0.2), or null. */
+    controller: string | null;
+    /** The component's controller, or else the service's. */
+    effectiveController: string;
+}
+export interface NoticeModel {
+    id: string;
+    component: string | null;
+    kind: string;
+    ref: string;
+    source: string;
+}
+export interface PersonalDataModel {
+    id: string;
+    component: string | null;
+    subjects: string[];
+    purpose: string;
+    /** The raw legal_basis of the manifest, or null when absent. */
+    legalBasis: string | null;
+    fields: {
+        name: string;
+        category: string;
+    }[];
+    source: string;
+}
+export interface StorageModel {
+    id: string;
+    component: string | null;
+    kind: string;
+    location: string;
+    /** The personal_data ids stored, as in the manifest. */
+    data: string[];
+    retention: {
+        duration: string;
+        trigger: string | null;
+    } | null;
+    source: string;
+}
+/** What a manifest declares about its service, in the order of the manifest. */
+export interface ServiceFacts {
+    /** service.repo (`owner/name`), or null. */
+    fullName: string | null;
+    description: string;
+    /** service.controller. */
+    controller: string;
+    components: ComponentModel[];
+    notices: NoticeModel[];
+    personalData: PersonalDataModel[];
+    storage: StorageModel[];
+}
+/** A declared tool of compliance.yaml, with the facts of its manifest. */
+export interface ToolModel extends ServiceFacts {
+    id: string;
+    /** service.name of its manifest. */
+    name: string;
+    /** The path of its manifest in the compliance repo. */
+    path: string;
 }
 export interface AiObligation {
     id: string;
@@ -347,7 +421,7 @@ export interface OutsideModel {
     open: ActionId | null;
     source: string;
 }
-export interface ServiceModel {
+export interface ServiceModel extends ServiceFacts {
     repo: string;
     /** service.name of its manifest. */
     name: string;
@@ -368,6 +442,8 @@ export interface DossierModel {
     anchors: Record<string, string>;
     /** The repos that have a services/ folder, in the order of compliance.yaml. */
     services: ServiceModel[];
+    /** The declared tools, in the order of compliance.yaml. */
+    tools: ToolModel[];
     openItems: number;
     /** In the order of the Actions table: role, then count (descending), then id. */
     actions: ModelAction[];

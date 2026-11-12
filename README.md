@@ -71,9 +71,17 @@ Every file is parsed by a strict YAML 1.2 parser (no anchor, alias, tag or direc
 `buildDossierModel` returns stable keys, never translated text. Open items are flagged where each value is built, never found by reading text.
 
 - `organisation`: `name`, `language`, and `rows` (`key`, `value`, `source`, `open`).
-- `anchors` and `services` (`repo`, `name`, `sha`, `receivedAt`, `lag` of each `sync.yaml`).
+- `anchors` and `services` (`repo`, `name`, `sha`, `receivedAt`, `lag` of each `sync.yaml`), each with the facts of its manifest, in the manifest's order:
+  - `fullName` (`service.repo`), `description` and `controller`;
+  - `components`, each with `id`, `kind`, its own `controller` (or null) and the `effectiveController` (its own, or else the service's);
+  - `notices` (`id`, `component`, `kind`, `ref`, `source`);
+  - `personalData` (`id`, `component`, `subjects`, `purpose`, `legalBasis`, `fields` with their `category`, `source`);
+  - `storage` (`id`, `component`, `kind`, `location`, `data`, `retention` with `duration` and `trigger`, `source`).
+
+  A field that a manifest does not have, a v0.1 one for instance, is null or an empty list.
+- `tools`: the declared tools of `compliance.yaml` (`id`, `name`, `path`) with the same facts.
 - `openItems` and `actions` (`id`, `role`, `count`, `places`: a processing id, the organisation, the AI features or outside the register).
-- `processings`: `id`, `name`, `legalBasis`, `art30` and `checks` (one group per item key, each value with its `source` and the action that closes it when open), `openItems`, `recipients` (`kind`, `name`, `country`, `dpa`, `dpaRef`, `safeguard`, `processor`, `flows`, `service`), and the raw `review`.
+- `processings`: `id`, `name`, `legalBasis`, `art30` and `checks` (one group per item key, each value with its `source` and the action that closes it when open), `openItems`, `recipients` (`kind`, `name`, `country`, `dpa`, `dpaRef`, `safeguard`, `processor`, `flows`, `service`), the raw `review`, and `services`: the repos and tools that feed it, in the order of `processing.yaml`, each with `repo` or `tool`, the personal data ids in scope (`data`: the filter, or every id of the manifest) and the `recipients` filter (null when there is none).
 - `aiFeatures` (`service`, `id`, `description`, `role`, `risk`, `obligations` with their status, `open`) and `outside` (`service`, `component`, `controller`, `rationale`, `privacyByDesign`, `data`, `open`).
 - `actionsFile`: the parsed `actions.yaml` when present (`buildDossierModel(tree, { actionsFile: false })` skips it). The markdown does not use it.
 
