@@ -1,0 +1,6 @@
+compliance-core
+Copyright 2026 C2-POLY
+
+This product includes the JSON Schemas and the register templates of
+C2-POLY/compliance-spec (Apache License 2.0), copied into schemas/ and
+templates/ and embedded in src/generated/spec.ts.
