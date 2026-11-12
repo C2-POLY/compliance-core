@@ -1,0 +1,30 @@
+{
+  "spec_versions": [
+    "0.1",
+    "0.2"
+  ],
+  "source": "C2-POLY/compliance-spec",
+  "commit": "c72824c18ba0296fb3eb3c97f41dc3a1b17133b2",
+  "schemas": {
+    "0.1": [
+      "anchors.schema.json",
+      "compliance.schema.json",
+      "manifest.schema.json",
+      "processing.schema.json",
+      "sync.schema.json"
+    ],
+    "0.2": [
+      "actions.schema.json",
+      "anchors.schema.json",
+      "compliance.schema.json",
+      "manifest.schema.json",
+      "processing.schema.json",
+      "sync.schema.json"
+    ]
+  },
+  "templates": [
+    "register/register.md.tmpl",
+    "register/register.en.md.tmpl",
+    "register/register.fr.md.tmpl"
+  ]
+}
