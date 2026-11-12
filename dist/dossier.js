@@ -643,6 +643,12 @@ export function buildDossierModel(tree, options = {}) {
             openItems: [],
             recipients,
             review: p.review ?? null,
+            services: list.map((e) => ({
+                repo: e.m.repo ?? null,
+                tool: e.m.repo === undefined ? e.m.label : null,
+                data: [...e.scope].sort(cmp),
+                recipients: e.recipients ? [...e.recipients].sort(cmp) : null,
+            })),
         };
     });
     // ---------- AI features ----------
@@ -723,17 +729,58 @@ export function buildDossierModel(tree, options = {}) {
     const actions = [...byKind]
         .map(([id, a]) => ({ id, role: ACTIONS[id].role, count: a.count, places: order.filter((pl) => a.places.has(pl)).map(toPlace) }))
         .sort((a, b) => ROLES[a.role].order - ROLES[b.role].order || b.count - a.count || cmp(a.id, b.id));
+    /** The facts of a manifest as written; a field the manifest (v0.1 or v0.2) does not have is null or []. */
+    const facts = (m) => {
+        const service = m.doc.service;
+        const items = (value) => value ?? [];
+        const orNull = (value) => value ?? null;
+        return {
+            fullName: orNull(service.repo),
+            description: service.description,
+            controller: service.controller,
+            components: items(service.components).map((c) => ({
+                id: c.id,
+                kind: c.kind,
+                controller: orNull(c.controller),
+                effectiveController: c.controller ?? service.controller,
+            })),
+            notices: items(m.doc.notices).map((n) => ({ id: n.id, component: orNull(n.component), kind: n.kind, ref: n.ref, source: src(m, n.source) })),
+            personalData: items(m.doc.personal_data).map((d) => ({
+                id: d.id,
+                component: orNull(d.component),
+                subjects: [...d.subjects],
+                purpose: d.purpose,
+                legalBasis: orNull(d.legal_basis),
+                fields: items(d.fields).map((f) => ({ name: f.name, category: f.category })),
+                source: src(m, d.source),
+            })),
+            storage: items(m.doc.storage).map((s) => ({
+                id: s.id,
+                component: orNull(s.component),
+                kind: s.kind,
+                location: s.location,
+                data: [...(s.data ?? [])],
+                retention: s.retention ? { duration: s.retention.duration, trigger: orNull(s.retention.trigger) } : null,
+                source: src(m, s.source),
+            })),
+        };
+    };
     const services = all
         .filter((m) => m.repo !== undefined)
         .map((m) => {
         const sync = syncs.get(m.repo);
-        return { repo: m.repo, name: m.doc.service.name, sha: sync.sha, receivedAt: sync.received_at, lag: sync.lag };
+        return { repo: m.repo, name: m.doc.service.name, sha: sync.sha, receivedAt: sync.received_at, lag: sync.lag, ...facts(m) };
+    });
+    const declaredTools = tools.map((t) => {
+        const m = manifests.get(t.path);
+        return { id: t.id, name: m.doc.service.name, path: t.path, ...facts(m) };
     });
     return {
         specVersion: DOSSIER_VERSION,
         organisation: { name: org.name, language: org.language ?? null, rows: organisationRows },
         anchors,
         services,
+        tools: declaredTools,
         openItems: opens.size,
         actions,
         processings: sections,

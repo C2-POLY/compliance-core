@@ -298,6 +298,81 @@ export interface ProcessingModel {
   recipients: RecipientModel[];
   /** The raw `review` of processing.yaml (v0.2.1), or null. */
   review: Doc | null;
+  /** The repos and declared tools that feed the processing, in the order of processing.yaml. */
+  services: ProcessingServiceModel[];
+}
+
+/** One entry of `services` of processing.yaml. */
+export interface ProcessingServiceModel {
+  /** The repo name, or null for a declared tool. */
+  repo: string | null;
+  /** The declared tool id, or null for a repo. */
+  tool: string | null;
+  /** The personal_data ids in scope: the `data` filter, or every id of the manifest when there is none. Sorted. */
+  data: string[];
+  /** The `recipients` filter, sorted, or null when the entry has none. */
+  recipients: string[] | null;
+}
+
+export interface ComponentModel {
+  id: string;
+  kind: string;
+  /** The controller the manifest states for the component (v0.2), or null. */
+  controller: string | null;
+  /** The component's controller, or else the service's. */
+  effectiveController: string;
+}
+
+export interface NoticeModel {
+  id: string;
+  component: string | null;
+  kind: string;
+  ref: string;
+  source: string;
+}
+
+export interface PersonalDataModel {
+  id: string;
+  component: string | null;
+  subjects: string[];
+  purpose: string;
+  /** The raw legal_basis of the manifest, or null when absent. */
+  legalBasis: string | null;
+  fields: { name: string; category: string }[];
+  source: string;
+}
+
+export interface StorageModel {
+  id: string;
+  component: string | null;
+  kind: string;
+  location: string;
+  /** The personal_data ids stored, as in the manifest. */
+  data: string[];
+  retention: { duration: string; trigger: string | null } | null;
+  source: string;
+}
+
+/** What a manifest declares about its service, in the order of the manifest. */
+export interface ServiceFacts {
+  /** service.repo (`owner/name`), or null. */
+  fullName: string | null;
+  description: string;
+  /** service.controller. */
+  controller: string;
+  components: ComponentModel[];
+  notices: NoticeModel[];
+  personalData: PersonalDataModel[];
+  storage: StorageModel[];
+}
+
+/** A declared tool of compliance.yaml, with the facts of its manifest. */
+export interface ToolModel extends ServiceFacts {
+  id: string;
+  /** service.name of its manifest. */
+  name: string;
+  /** The path of its manifest in the compliance repo. */
+  path: string;
 }
 
 export interface AiObligation {
@@ -336,7 +411,7 @@ export interface OutsideModel {
   source: string;
 }
 
-export interface ServiceModel {
+export interface ServiceModel extends ServiceFacts {
   repo: string;
   /** service.name of its manifest. */
   name: string;
@@ -358,6 +433,8 @@ export interface DossierModel {
   anchors: Record<string, string>;
   /** The repos that have a services/ folder, in the order of compliance.yaml. */
   services: ServiceModel[];
+  /** The declared tools, in the order of compliance.yaml. */
+  tools: ToolModel[];
   openItems: number;
   /** In the order of the Actions table: role, then count (descending), then id. */
   actions: ModelAction[];
@@ -855,6 +932,12 @@ export function buildDossierModel(tree: ComplianceTree, options: DossierModelOpt
       openItems: [],
       recipients,
       review: (p.review as Doc | undefined) ?? null,
+      services: list.map((e) => ({
+        repo: e.m.repo ?? null,
+        tool: e.m.repo === undefined ? e.m.label : null,
+        data: [...e.scope].sort(cmp),
+        recipients: e.recipients ? [...e.recipients].sort(cmp) : null,
+      })),
     };
   });
 
@@ -939,18 +1022,60 @@ export function buildDossierModel(tree: ComplianceTree, options: DossierModelOpt
     .map(([id, a]) => ({ id, role: ACTIONS[id].role as Role, count: a.count, places: order.filter((pl) => a.places.has(pl)).map(toPlace) }))
     .sort((a, b) => ROLES[a.role].order - ROLES[b.role].order || b.count - a.count || cmp(a.id, b.id));
 
+  /** The facts of a manifest as written; a field the manifest (v0.1 or v0.2) does not have is null or []. */
+  const facts = (m: Labelled): ServiceFacts => {
+    const service = m.doc.service as Doc;
+    const items = (value: unknown): Doc[] => (value as Doc[] | undefined) ?? [];
+    const orNull = (value: unknown): string | null => (value as string | undefined) ?? null;
+    return {
+      fullName: orNull(service.repo),
+      description: service.description as string,
+      controller: service.controller as string,
+      components: items(service.components).map((c) => ({
+        id: c.id as string,
+        kind: c.kind as string,
+        controller: orNull(c.controller),
+        effectiveController: (c.controller as string | undefined) ?? (service.controller as string),
+      })),
+      notices: items(m.doc.notices).map((n) => ({ id: n.id as string, component: orNull(n.component), kind: n.kind as string, ref: n.ref as string, source: src(m, n.source) })),
+      personalData: items(m.doc.personal_data).map((d) => ({
+        id: d.id as string,
+        component: orNull(d.component),
+        subjects: [...(d.subjects as string[])],
+        purpose: d.purpose as string,
+        legalBasis: orNull(d.legal_basis),
+        fields: items(d.fields).map((f) => ({ name: f.name as string, category: f.category as string })),
+        source: src(m, d.source),
+      })),
+      storage: items(m.doc.storage).map((s) => ({
+        id: s.id as string,
+        component: orNull(s.component),
+        kind: s.kind as string,
+        location: s.location as string,
+        data: [...((s.data as string[] | undefined) ?? [])],
+        retention: s.retention ? { duration: s.retention.duration as string, trigger: orNull(s.retention.trigger) } : null,
+        source: src(m, s.source),
+      })),
+    };
+  };
+
   const services: ServiceModel[] = all
     .filter((m) => m.repo !== undefined)
     .map((m) => {
       const sync = syncs.get(m.repo!)!;
-      return { repo: m.repo!, name: m.doc.service.name as string, sha: sync.sha as string, receivedAt: sync.received_at as string, lag: sync.lag as Doc };
+      return { repo: m.repo!, name: m.doc.service.name as string, sha: sync.sha as string, receivedAt: sync.received_at as string, lag: sync.lag as Doc, ...facts(m) };
     });
+  const declaredTools: ToolModel[] = tools.map((t) => {
+    const m = manifests.get(t.path as string)!;
+    return { id: t.id as string, name: m.doc.service.name as string, path: t.path as string, ...facts(m) };
+  });
 
   return {
     specVersion: DOSSIER_VERSION,
     organisation: { name: org.name as string, language: (org.language as string | undefined) ?? null, rows: organisationRows },
     anchors,
     services,
+    tools: declaredTools,
     openItems: opens.size,
     actions,
     processings: sections,

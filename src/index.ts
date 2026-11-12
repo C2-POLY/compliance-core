@@ -73,6 +73,13 @@ export {
   type RecipientModel,
   type Role,
   type ServiceModel,
+  type ServiceFacts,
+  type ComponentModel,
+  type NoticeModel,
+  type PersonalDataModel,
+  type StorageModel,
+  type ToolModel,
+  type ProcessingServiceModel,
   type ValueRow,
   type WordKey,
 } from './dossier.js';
